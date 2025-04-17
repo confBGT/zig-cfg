@@ -1,16 +1,29 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const FSM = struct {
+/// A finite state machine (FSM) for tokenizing grammar rules. Initialize with
+/// `init`.
+/// _TODO: Use an iterator to avoid unnecessary allocations._
+pub const FSMTokenizer = struct {
     allocator: Allocator,
-
     state: State,
     token: ?Token,
     tokens: std.ArrayList(Token),
 
+    const lut = [_]FnType{
+        parseStart,
+        parseArrow,
+        parseTerminal,
+        parseNonTerminal,
+    };
+
     const Self = @This();
 
-    const FnType = *const fn (*Self, []const u8) Allocator.Error!void;
+    const FnType = *const fn (*Self, []const u8) Error!void;
+
+    const Error = error {
+        InvalidCharacter,
+    } || Allocator.Error;
 
     const State = enum {
         start,
@@ -54,7 +67,7 @@ const FSM = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .state = State.start,
+            .state = .start,
             .token = null,
             .tokens = std.ArrayList(Token).init(allocator),
         };
@@ -65,19 +78,36 @@ const FSM = struct {
         self.* = undefined;
     }
 
-    // transition to _start_ state, add the current token to the list, and
-    // invalidate the current token
-    pub fn reset(self: *Self) !void {
-        try self.tokens.append(self.token.?);
+    pub fn tokenize(self: *Self, input: []const u8) ![]Token {
+        for (0..input.len) |i| {
+            const index = @intFromEnum(self.state);
+            try lut[index](self, input[i..]);
+        }
 
+        try self.finalize();
+        return self.tokens.toOwnedSlice();
+    }
+
+    /// Emits the current token and sets the FSM state to `start`.
+    fn emitTokenAndReset(self: *Self) !void {
+        try self.tokens.append(self.token.?);
         self.token = null;
         self.state = .start;
     }
 
-    pub fn parseStart(self: *Self, slice: []const u8) !void {
+    /// Completes the tokenization process by emitting any pending tokens and
+    /// resetting the FSM state.
+    fn finalize(self: *Self) !void {
+        switch (self.state) {
+            .start => {},
+            .parse_arrow, .parse_terminal, .parse_non_terminal => {
+                return self.emitTokenAndReset();
+            },
+        }
+    }
+
+    fn parseStart(self: *Self, slice: []const u8) !void {
         switch (slice[0]) {
-            // end
-            0 => {},
             // start of arrow
             '-' => {
                 self.token = Token { .arrow = slice[0..1] };
@@ -86,7 +116,7 @@ const FSM = struct {
             // delimiter
             '|' => {
                 self.token = Token { .delimiter = slice[0..1] };
-                try self.reset();
+                try self.emitTokenAndReset();
             },
             // start of terminal
             '\'', '\"' => {
@@ -103,50 +133,55 @@ const FSM = struct {
             // any other character is illegal
             else => |c| {
                 std.debug.print("Illegal character '{c}' ({d})\n", .{ c, c });
-                std.posix.exit(1);
+                return Error.InvalidCharacter;
             },
         }
     }
 
-    pub fn parseArrow(self: *Self, slice: []const u8) !void {
+    fn parseArrow(self: *Self, slice: []const u8) !void {
         switch (slice[0]) {
             // only allowed character after '-'
             '>' => {
                 self.token.?.arrow.len += 1;
-                try self.reset();
+                try self.emitTokenAndReset();
             },
             else => |c| {
                 std.debug.print("Illegal character '{c}' ({d})\n", .{c, c});
-                std.posix.exit(1);
+                return Error.InvalidCharacter;
             }
         }
     }
 
-    pub fn parseTerminal(self: *Self, slice: []const u8) !void {
+    fn parseTerminal(self: *Self, slice: []const u8) !void {
         switch (slice[0]) {
             // end of terminal
             '\'', '\"' => {
                 self.token.?.terminal.len += 1;
-                try self.reset();
+                try self.emitTokenAndReset();
             },
             else => |c| {
                 // any _printable_ character can be part of a terminal
                 if (std.ascii.isPrint(c)) {
                     self.token.?.terminal.len += 1;
-                    // any other character is illegal
-                } else {
+                } else { // any other character is illegal
                     std.debug.print("Illegal character '{c}' ({d})\n", .{ c, c });
-                    std.posix.exit(1);
+                    return Error.InvalidCharacter;
                 }
             },
         }
     }
 
-    pub fn parseNonTerminal(self: *Self, slice: []const u8) !void {
+    fn parseNonTerminal(self: *Self, slice: []const u8) !void {
         switch (slice[0]) {
-            // end of non terminal is marked by whitespace or a null character
-            0, ' ', '\t' => {
-                try self.reset();
+            // a non terminal can be directly followed by a delimiter
+            '|' => {
+                try self.emitTokenAndReset();
+                self.token = Token { .delimiter = slice[0..1] };
+                try self.emitTokenAndReset();
+            },
+            // end of non terminal is marked by whitespace
+            ' ', '\t' => {
+                try self.emitTokenAndReset();
             },
             // only alphanumerics can be part of a non terminal
             '0'...'9', 'a'...'z', 'A'...'Z' => {
@@ -155,45 +190,8 @@ const FSM = struct {
             // any other character is illegal
             else => |c| {
                 std.debug.print("Illegal character '{c}' ({d})\n", .{ c, c });
-                std.posix.exit(1);
+                return Error.InvalidCharacter;
             },
         }
     }
-
-    pub fn tokenize(self: *Self, input: []const u8) ![]Token {
-        const lut = [_]FnType{
-            parseStart,
-            parseArrow,
-            parseTerminal,
-            parseNonTerminal,
-        };
-
-        for (0..input.len) |i| {
-            const index = @intFromEnum(self.state);
-            try lut[index](self, input[i..]);
-        }
-
-        const index = @intFromEnum(self.state);
-        try lut[index](self, &[_]u8{ 0 });
-
-        return self.tokens.toOwnedSlice();
-    }
 };
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
-
-    const allocator = gpa.allocator();
-
-    var fsm = FSM.init(allocator);
-    defer fsm.deinit();
-
-    const text = "S -> NP | VP | TER";
-    const tokens = try fsm.tokenize(text);
-    defer allocator.free(tokens);
-
-    for (tokens) |token| {
-        std.debug.print("{any}\n", .{token});
-    }
-}
