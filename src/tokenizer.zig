@@ -1,11 +1,9 @@
 const std = @import("std");
 
-const Token = struct {
+pub const Token = struct {
     tag: Tag,
     start: usize,
     end: usize,
-
-    const Self = @This();
 
     const Tag = enum {
         eof,

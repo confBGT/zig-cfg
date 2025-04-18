@@ -8,11 +8,11 @@ pub fn main() !void {
 
     const allocator = gpa.allocator();
 
-    // const text = @embedFile("grammar.txt");
-    const text = "S -> P\nE ->";
+    const text = @embedFile("grammar.txt");
     std.debug.print("Grammar file:\n{string}", .{text});
 
     var grammar = try Grammar.fromString(allocator, text);
     defer grammar.deinit();
+
     std.debug.print("------------\n{any}\n", .{grammar});
 }
