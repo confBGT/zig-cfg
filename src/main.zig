@@ -1,7 +1,6 @@
 const std = @import("std");
-const FSMTokenizer = @import("fsm_tokenizer.zig").FSMTokenizer;
-
-const Allocator = std.mem.Allocator;
+const Grammar = @import("grammar.zig").Grammar;
+const Tokenizer = @import("tokenizer.zig").Tokenizer;
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -9,14 +8,11 @@ pub fn main() !void {
 
     const allocator = gpa.allocator();
 
-    var fsm = FSMTokenizer.init(allocator);
-    defer fsm.deinit();
+    // const text = @embedFile("grammar.txt");
+    const text = "S -> P\nE ->";
+    std.debug.print("Grammar file:\n{string}", .{text});
 
-    const text = "S -> NP 'invalid' | VP | TER";
-    const tokens = try fsm.tokenize(text);
-    defer allocator.free(tokens);
-
-    for (tokens) |token| {
-        std.debug.print("{any}\n", .{token});
-    }
+    var grammar = try Grammar.fromString(allocator, text);
+    defer grammar.deinit();
+    std.debug.print("------------\n{any}\n", .{grammar});
 }
