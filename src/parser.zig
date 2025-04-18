@@ -35,7 +35,7 @@ pub const Parser = struct {
                 const token = try self.tokenizer.next() orelse return null;
                 switch (token.tag) {
                     .non_terminal => {
-                        self.lhs = self.tokenizer.viewOf(token);
+                        self.lhs = self.tokenizer.view(token);
                         continue :state .expect_arrow;
                     },
                     else => {
@@ -55,7 +55,7 @@ pub const Parser = struct {
                         self.state = .expect_lhs;
                     },
                     .terminal, .non_terminal => {
-                        try self.rhs.append(self.tokenizer.viewOf(token));
+                        try self.rhs.append(self.tokenizer.view(token));
                         continue :state .expect_rhs;
                     },
                     else => {

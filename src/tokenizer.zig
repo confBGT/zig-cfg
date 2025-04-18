@@ -17,6 +17,7 @@ const Token = struct {
     };
 };
 
+/// A finite state machine for tokenizing grammar rules. Initialize with `init`.
 pub const Tokenizer = struct {
     index: usize,
     buffer: [:0]const u8,
@@ -39,20 +40,20 @@ pub const Tokenizer = struct {
     }
 
     pub fn dump(self: Self, token: Token) void {
-        var view = self.buffer[token.start..token.end];
+        var token_view = self.view(token);
 
-        for (self.viewOf(token)) |c| {
+        for (token_view) |c| {
             if (!std.ascii.isPrint(c)) {
-                view = "N/A";
+                token_view = "N/A";
                 break;
             }
         }
 
-        const tag = @tagName(token.tag);
-        std.debug.print("Token {{ {string}: {string} }}\n", .{tag, view});
+        const tag_name = @tagName(token.tag);
+        std.debug.print("Token {{ {string}: {string} }}\n", .{tag_name, token_view});
     }
 
-    pub fn viewOf(self: Self, token: Token) []const u8 {
+    pub fn view(self: Self, token: Token) []const u8 {
         return self.buffer[token.start..token.end];
     }
 
