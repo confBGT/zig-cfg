@@ -6,6 +6,7 @@ pub fn LinkedList(comptime T: type) type {
         allocator: Allocator,
         start_ptr: ?*Node,
         last_ptr: ?*Node,
+        count: usize,
 
         const Self = @This();
 
@@ -19,6 +20,7 @@ pub fn LinkedList(comptime T: type) type {
                 .allocator = allocator,
                 .start_ptr = null,
                 .last_ptr = null,
+                .count = 0,
             };
         }
 
@@ -33,16 +35,7 @@ pub fn LinkedList(comptime T: type) type {
             }
 
             self.last_ptr = new_node_ptr;
-        }
-
-        pub fn deinit(self: *Self) void {
-            var node_ptr = self.start_ptr;
-            while (node_ptr) |node| {
-                node_ptr = node.next;
-                self.allocator.destroy(node);
-            }
-
-            self.* = undefined;
+            self.count += 1;
         }
 
         pub fn splitHead(self: *Self) Self {
@@ -52,12 +45,25 @@ pub fn LinkedList(comptime T: type) type {
                 .allocator = self.allocator,
                 .start_ptr = self.start_ptr.?.next,
                 .last_ptr = self.last_ptr,
+                .count = self.count - 1,
             };
 
             self.last_ptr = self.start_ptr;
+            self.start_ptr.?.next = null;
+            self.count = 1;
 
             return ret;
         }
+
+        pub fn deinit(self: *Self) void {
+            var node_ptr = self.start_ptr;
+            while (node_ptr) |node| {
+                node_ptr = node.next;
+                self.allocator.destroy(node);
+            }
+            self.* = undefined;
+        }
+
 
         const Iterator = struct {
             current: ?*Node,

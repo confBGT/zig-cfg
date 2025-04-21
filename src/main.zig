@@ -15,17 +15,7 @@ pub fn main() !void {
     var grammar = try Grammar.fromString(allocator, text);
     defer grammar.deinit();
 
+    try grammar.binarise();
+
     std.debug.print("------------\n{any}\n", .{grammar});
-
-    var foo = SymbolTable.init(allocator);
-    defer foo.deinit();
-
-    _ = try foo.getOrPut(.{ .tag = .terminal, .label = "mariop" });
-    _ = try foo.getOrPut(.{ .tag = .terminal, .label = "yoshii" });
-    _ = try foo.getOrPut(.{ .tag = .terminal, .label = "noseya" });
-    _ = try foo.getOrPut(.{ .tag = .terminal, .label = "popotu" });
-
-    for (foo.map.keys()) |symbol| {
-        std.debug.print("{string}\n", .{symbol.label});
-    }
 }

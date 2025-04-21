@@ -37,7 +37,7 @@ pub const SymbolTable = struct {
     pub fn getOrPut(self: *Self, symbol: Symbol) !u32 {
         const result = try self.map.getOrPut(symbol);
         if (!result.found_existing) {
-            result.value_ptr.* = @intCast(self.map.count());
+            result.value_ptr.* = @intCast(self.map.count() - 1);
         }
         return result.value_ptr.*;
     }
