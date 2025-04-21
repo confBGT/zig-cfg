@@ -1,22 +1,29 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Production = @import("grammar.zig").Production;
+const Symbol = @import("symbol_table.zig").Symbol;
 const SymbolTable = @import("symbol_table.zig").SymbolTable;
+const LinkedList = @import("linked_list.zig").LinkedList;
 
-const Production = struct {
-    lhs: u64,
-    rhs: []u64,
-};
+fn put(symbols: *std.ArrayList(Symbol), needle: Symbol) !usize {
+    for (symbols.items, 0..) |symbol, i| {
+        if (std.mem.eql(u8, symbol.label, needle.label)) {
+            return i;
+        }
+    }
+    try symbols.append(needle);
+    return symbols.items.len - 1;
+}
 
-const P = struct {
+pub const Parser = struct {
     allocator: std.mem.Allocator,
     tokenizer: Tokenizer,
+    symbols: *std.ArrayList(Symbol),
     state: State,
     lhs: u64,
-    rhs: std.ArrayList(u64),
-
-    const Self = @This();
+    rhs: LinkedList(u64),
 
     const State = enum {
         expect_lhs,
@@ -24,48 +31,18 @@ const P = struct {
         expect_arrow,
     };
 
-    pub fn init(allocator: std.mem.Allocator, input: [:0]const u8) Self {
+    pub fn init(allocator: std.mem.Allocator, input: [:0]const u8, symbols: *std.ArrayList(Symbol)) Parser {
         return .{
             .allocator = allocator,
-            .symbol_table = SymbolTable.init(allocator),
             .tokenizer = Tokenizer.init(input),
-            .state = State.start,
+            .symbols = symbols,
+            .state = .expect_lhs,
             .lhs = undefined,
-            .rhs = std.ArrayList(u64).init(allocator),
+            .rhs = LinkedList(u64).init(allocator),
         };
     }
 
-    pub fn initA(allocator: std.mem.Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .symbol_table = SymbolTable.init(allocator),
-            .tokenizer = undefined,
-            .state = State.start,
-            .lhs = undefined,
-            .rhs = std.ArrayList(u64).init(allocator),
-        };
-    }
-
-    pub fn parseInput(self: *Self, input: [:0]const u8) void {
-        self.tokenizer = Tokenizer.init(input);
-
-        var foos = std.ArrayList(Foo).init(self.allocator);
-        while (try self.next()) |foo| {
-            try foos.append(foo);
-        }
-
-        return .{
-            .foos = foos,
-            .symbol_table = self.symbol_table,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.rhs.deinit();
-        self.* = undefined;
-    }
-
-    pub fn next(self: *Self) !?Foo {
+    pub fn next(self: *Parser) !?Production {
         errdefer self.rhs.deinit();
 
         while (try self.tokenizer.next()) |token| {
@@ -75,10 +52,11 @@ const P = struct {
                         return null;
                     },
                     .non_terminal => {
-                        const symbol = self.tokenizer.view(token);
-                        const id = self.symbol_table.getOrPut(symbol);
-                        self.lhs = id;
                         self.state = .expect_arrow;
+                        self.lhs = try put(self.symbols, .{
+                            .tag = .non_terminal,
+                            .label = self.tokenizer.view(token),
+                        });
                     },
                     else => {
                         return error.InvalidToken;
@@ -96,9 +74,18 @@ const P = struct {
                     .delimiter => {
                         break;
                     },
-                    .terminal, .non_terminal => {
-                        const symbol = self.tokenizer.view(token);
-                        const id = self.symbol_table.getOrPut(symbol);
+                    .terminal => {
+                        const id = try put(self.symbols, .{
+                            .tag = .terminal,
+                            .label = self.tokenizer.view(token),
+                        });
+                        try self.rhs.append(id);
+                    },
+                    .non_terminal => {
+                        const id = try put(self.symbols, .{
+                            .tag = .non_terminal,
+                            .label = self.tokenizer.view(token),
+                        });
                         try self.rhs.append(id);
                     },
                     else => {
@@ -117,89 +104,8 @@ const P = struct {
             }
         }
 
-        return .{
-            .lhs = self.lhs,
-            .rhs = try self.rhs.toOwnedSlice(),
-        };
-    }
-};
-
-pub const Parser = struct {
-    allocator: std.mem.Allocator,
-    tokenizer: Tokenizer,
-    state: State,
-    lhs: []const u8,
-    rhs: std.ArrayList([]const u8),
-
-    const Self = @This();
-
-    const State = enum {
-        expect_lhs,
-        expect_rhs,
-        expect_arrow,
-    };
-
-    pub fn init(allocator: std.mem.Allocator, input: [:0]const u8) Self {
-        return .{
-            .allocator = allocator,
-            .tokenizer = Tokenizer.init(input),
-            .state = .expect_lhs,
-            .lhs = undefined,
-            .rhs = std.ArrayList([]const u8).init(allocator),
-        };
-    }
-
-    pub fn next(self: *Self) !?Production {
-        errdefer self.rhs.deinit();
-
-        while (try self.tokenizer.next()) |token| {
-            switch (self.state) {
-                .expect_lhs => switch (token.tag) {
-                    .eof => {
-                        return null;
-                    },
-                    .non_terminal => {
-                        self.lhs = self.tokenizer.view(token);
-                        self.state = .expect_arrow;
-                    },
-                    else => {
-                        return error.InvalidToken;
-                    },
-                },
-
-                .expect_rhs => switch (token.tag) {
-                    .eof => {
-                        break;
-                    },
-                    .newline => {
-                        self.state = .expect_lhs;
-                        break;
-                    },
-                    .delimiter => {
-                        break;
-                    },
-                    .terminal, .non_terminal => {
-                        try self.rhs.append(self.tokenizer.view(token));
-                    },
-                    else => {
-                        return error.InvalidToken;
-                    },
-                },
-
-                .expect_arrow => switch (token.tag) {
-                    .arrow => {
-                        self.state = .expect_rhs;
-                    },
-                    else => {
-                        return error.InvalidToken;
-                    },
-                },
-            }
-        }
-
-        return .{
-            .lhs = self.lhs,
-            .rhs = try self.rhs.toOwnedSlice(),
-        };
+        const ret = Production { .lhs = self.lhs, .rhs = self.rhs };
+        self.rhs = LinkedList(u64).init(self.allocator);
+        return ret;
     }
 };

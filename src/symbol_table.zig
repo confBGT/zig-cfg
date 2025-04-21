@@ -1,31 +1,49 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+pub const Symbol = struct {
+    tag: Tag,
+    label: []const u8,
+
+    const Tag = enum {
+        terminal,
+        non_terminal,
+    };
+};
+
+const SymbolContext = struct {
+    const Self = @This();
+
+    pub fn hash(_: Self, key: Symbol) u32 {
+        return std.array_hash_map.hashString(key.label);
+    }
+
+    pub fn eql(_: Self, a: Symbol, b: Symbol, _: usize) bool {
+        return std.array_hash_map.eqlString(a.label, b.label);
+    }
+};
 
 pub const SymbolTable = struct {
-    table: std.StringArrayHashMap(usize),
-    symbols: std.ArrayList([]const u8),
+    map: std.ArrayHashMap(Symbol, u32, SymbolContext, true),
 
     const Self = @This();
 
-    pub fn init(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: Allocator) Self {
         return .{
-            .table = std.StringArrayHashMap(usize).init(allocator),
-            .symbols = std.ArrayList([]const u8).init(allocator),
+            .map = std.ArrayHashMap(Symbol, u32, SymbolContext, true).init(allocator),
         };
     }
 
-    pub fn getOrPut(self: *Self, symbol: []const u8) !usize {
-        if (self.table.get(symbol)) |index| {
-            return index;
+    pub fn getOrPut(self: *Self, symbol: Symbol) !u32 {
+        const result = try self.map.getOrPut(symbol);
+        if (!result.found_existing) {
+            result.value_ptr.* = @intCast(self.map.count());
         }
-        const index = self.symbols.items.len;
-        try self.table.put(symbol, index);
-        try self.symbols.append(symbol);
-        return index;
+        return result.value_ptr.*;
     }
 
     pub fn deinit(self: *Self) void {
-        self.table.deinit();
-        self.symbols.deinit();
+        self.map.deinit();
         self.* = undefined;
     }
 };

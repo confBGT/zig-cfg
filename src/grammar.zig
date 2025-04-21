@@ -1,103 +1,68 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const Token = @import("tokenizer.zig").Token;
 const Parser = @import("parser.zig").Parser;
+const Symbol = @import("symbol_table.zig").Symbol;
+const LinkedList = @import("linked_list.zig").LinkedList;
 
 pub const Production = struct {
-    lhs: []const u8,
-    rhs: [][]const u8,
+    lhs: u64,
+    rhs: LinkedList(u64),
 };
 
 pub const Grammar = struct {
     allocator: std.mem.Allocator,
-    lhs_index: IndexMap,
-    rhs_index: IndexMap,
     productions: std.ArrayList(Production),
+    symbols: std.ArrayList(Symbol),
 
     const Self = @This();
-    const IndexMap = std.StringArrayHashMap(std.ArrayList(Production));
-    // const IndexMap = std.StringArrayHashMap(std.ArrayList(*const Production));
 
-    fn calculateIndexes(self: *Self) !void {
-        for (self.productions.items) |prod| {
-            const lhs_result = try self.lhs_index.getOrPut(prod.lhs);
-            if (!lhs_result.found_existing) {
-                // lhs_result.value_ptr.* = std.ArrayList(*const Production).init(self.allocator);
-                lhs_result.value_ptr.* = std.ArrayList(Production).init(self.allocator);
-            }
-            try lhs_result.value_ptr.append(prod);
-
-            for (prod.rhs) |rhs| {
-                const rhs_result = try self.rhs_index.getOrPut(rhs);
-                if (!rhs_result.found_existing) {
-                    rhs_result.value_ptr.*=  std.ArrayList(Production).init(self.allocator);
-                }
-                try rhs_result.value_ptr.append(prod);
-            }
-        }
+    pub fn init(
+        allocator: Allocator,
+        productions: std.ArrayList(Production),
+        symbols: std.ArrayList(Symbol),
+    ) Self {
+        return .{
+            .allocator = allocator,
+            .productions = productions,
+            .symbols = symbols,
+        };
     }
 
-    pub fn fromString(allocator: std.mem.Allocator, input: [:0]const u8) !Self {
-        // parsing input grammar
+    pub fn fromString(allocator: Allocator, input: [:0]const u8) !Self {
+        // parse input
         var productions = std.ArrayList(Production).init(allocator);
         errdefer {
-            for (productions.items) |prod| {
-                allocator.free(prod.rhs);
+            defer productions.deinit();
+            for (productions.items) |*production| {
+                production.rhs.deinit();
             }
-            productions.deinit();
         }
 
-        var parser = Parser.init(allocator, input);
+        // var symbol_table = SymbolTable.init(allocator);
+        // errdefer symbol_table.deinit();
+        //
+        // var parser = Parser.init(allocator, input, &symbol_table);
+        // while (try parser.next()) |prod| {
+        //     try productions.append(prod);
+        // }
+
+        var symbols = std.ArrayList(Symbol).init(allocator);
+        var parser = Parser.init(allocator, input, &symbols);
         while (try parser.next()) |prod| {
             try productions.append(prod);
         }
 
-        // initializing grammar instance
-        var self = Self {
-            .allocator = allocator,
-            .lhs_index = IndexMap.init(allocator),
-            .rhs_index = IndexMap.init(allocator),
-            .productions = productions,
-        };
-
-        try self.calculateIndexes();
-        return self;
-    }
-
-    pub fn foo(self: *Self) !void {
-        for (self.productions.items) |prod| {
-            if (prod.rhs.len <= 1) {
-                return;
-            }
-
-            for (prod.rhs) |token| {
-                if (token.tag == .terminal) {
-                    const p = Production {
-                        .lhs = undefined,
-                        .rhs = token,
-                    };
-
-                    try self.productions.append(p);
-                }
-            }
-        }
+        return init(allocator, productions, symbols);
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.lhs_index.values()) |value| {
-            value.deinit();
-        }
-
-        for (self.rhs_index.values()) |value| {
-            value.deinit();
-        }
-
-        for (self.productions.items) |prod| {
-            self.allocator.free(prod.rhs);
+        for (self.productions.items) |*production| {
+            production.rhs.deinit();
         }
 
         self.productions.deinit();
-        self.lhs_index.deinit();
-        self.rhs_index.deinit();
+        self.symbols.deinit();
         self.* = undefined;
     }
 
@@ -107,15 +72,22 @@ pub const Grammar = struct {
         _: std.fmt.FormatOptions,
         writer: anytype,
     ) !void {
-        // const start = if (self.start) |s| s.lhs else "N/A";
-        const start = "N/A";
+        try writer.print(
+            "Grammar with {d} productions:\n",
+            .{self.productions.items.len},
+        );
 
-        try writer.print("Grammar with {d} productions (start = {string})\n", .{self.productions.items.len, start});
-        for (self.productions.items, 0..) |prod, i| {
-            try writer.print("    {any}", .{prod});
-            if (i < self.productions.items.len - 1) {
-                try writer.print("\n", .{});
+        for (self.productions.items) |prod| {
+            const lhs = self.symbols.items[prod.lhs];
+            try writer.print("{string} ->", .{lhs.label});
+
+            var it = prod.rhs.iterator();
+            while (it.next()) |rhs_id| {
+                const rhs = self.symbols.items[rhs_id];
+                try writer.print(" {string}", .{rhs.label});
             }
+
+            try writer.print("\n", .{});
         }
     }
 };
