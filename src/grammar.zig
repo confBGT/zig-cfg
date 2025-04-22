@@ -49,12 +49,21 @@ pub const Grammar = struct {
         self.* = undefined;
     }
 
+    /// _https://en.wikipedia.org/wiki/Chomsky_normal_form_
     pub fn convertToChomskyNormalForm(self: *Self) !void {
         try self.eliminateNonsolitaryTerminals();
         try self.binarise();
-        try self.eliminateUnitaryRules();
+        try self.eliminateUnitaryProductions();
     }
 
+    /// Replace each production of the form
+    ///     `A -> X_1 X_2 ... X_n`,
+    /// by productions
+    ///     `A_1 -> X_1 A_2`,
+    ///     `A_2 -> X_2 A_3`,
+    ///     `...`,
+    ///     `A_(n-2) -> X_(n-1) X_n`,
+    /// where `A_i` are new nonterminal symbols.
     pub fn binarise(self: *Self) !void {
         var i: usize = 0;
         const productions_len = self.productions.items.len;
@@ -63,6 +72,13 @@ pub const Grammar = struct {
         }
     }
 
+    /// For each production of the form
+    ///     `A -> X_1 ... "a" ... X_n`
+    /// with a terminal symbol "a" being not the only symbol in the right-hand
+    /// side, introduce, for every such terminal, a new nonterminal symbol
+    /// `N_a` and a new production such that `N_a -> "a"`. Then, change the
+    /// original rule to be of the form
+    ///     `A -> X_1 ... N_a ... X_n`.
     pub fn eliminateNonsolitaryTerminals(self: *Self) !void {
         var i: usize = 0;
         const productions_len = self.productions.items.len;
@@ -72,7 +88,15 @@ pub const Grammar = struct {
         }
     }
 
-    pub fn eliminateUnitaryRules(self: *Self) !void {
+    /// For each production of the form
+    ///     `A -> B`,
+    /// where `A` and `B` are nonterminals, eliminate such production, and, for
+    /// every other production of the form
+    ///     `B -> X_1 ... X_N`,
+    /// where `X_1 ... X_N` is a string of nonterminals and terminals, add a
+    /// new production of the form
+    ///     `A -> X_1 ... X_N`.
+    pub fn eliminateUnitaryProductions(self: *Self) !void {
         var i: usize = 1;
         var productions_len = self.productions.items.len;
         while (i < productions_len) : (i += 1) {
@@ -140,18 +164,19 @@ pub const Grammar = struct {
         }
     }
 
-    /// Searches for a production where `rhs` is the only symbol on the
+    /// Searches for a production where `id` is the only symbol on the
     /// right-hand side. If found, the corresponding left-hand side symbol ID
     /// is returned. Otherwise, `null` is returned.
-    fn findUniqueLhs(self: *Self, rhs: u32) ?u32 {
+    fn findUniqueLhs(self: *Self, id: u32) ?u32 {
         for (self.productions.items) |prod| {
-            if (prod.rhs.count == 1 and prod.rhs.start_ptr.?.item == rhs) {
+            if (prod.rhs.count == 1 and prod.rhs.start_ptr.?.item == id) {
                 return prod.lhs;
             }
         }
         return null;
     }
 
+    /// Returns whether `id` corresponds to a terminal symbol.
     fn isTerminal(self: Self, id: u32) bool {
         if (id < self.symbols.len) {
             return self.symbols[id].tag == .terminal;
