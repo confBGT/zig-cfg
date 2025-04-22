@@ -43,7 +43,7 @@ pub const Parser = struct {
                     },
                     .non_terminal => {
                         self.state = .expect_arrow;
-                        self.lhs = try self.symbols.getOrPut(.{
+                        self.lhs = try self.symbols.intern(.{
                             .tag = .non_terminal,
                             .label = self.tokenizer.view(token),
                         });
@@ -65,14 +65,14 @@ pub const Parser = struct {
                         break;
                     },
                     .terminal => {
-                        const id = try self.symbols.getOrPut(.{
+                        const id = try self.symbols.intern(.{
                             .tag = .terminal,
                             .label = self.tokenizer.view(token),
                         });
                         try self.rhs.append(id);
                     },
                     .non_terminal => {
-                        const id = try self.symbols.getOrPut(.{
+                        const id = try self.symbols.intern(.{
                             .tag = .non_terminal,
                             .label = self.tokenizer.view(token),
                         });

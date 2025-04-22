@@ -15,7 +15,7 @@ pub fn main() !void {
     var grammar = try Grammar.fromString(allocator, text);
     defer grammar.deinit();
 
-    try grammar.binarise();
+    try grammar.convertToChomskyNormalForm();
 
     std.debug.print("------------\n{any}\n", .{grammar});
 }

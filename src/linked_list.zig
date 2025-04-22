@@ -24,6 +24,26 @@ pub fn LinkedList(comptime T: type) type {
             };
         }
 
+        pub fn deinit(self: *Self) void {
+            var node_ptr = self.start_ptr;
+            while (node_ptr) |node| {
+                node_ptr = node.next;
+                self.allocator.destroy(node);
+            }
+            self.* = undefined;
+        }
+
+        pub fn clone(self: Self) !Self {
+            var ret = init(self.allocator);
+
+            var it = self.iterator();
+            while (it.next()) |item| {
+                try ret.append(item.*);
+            }
+
+            return ret;
+        }
+
         pub fn append(self: *Self, item: T) !void {
             const new_node_ptr = try self.allocator.create(Node);
             new_node_ptr.* = Node { .item = item, .next = null };
@@ -36,6 +56,13 @@ pub fn LinkedList(comptime T: type) type {
 
             self.last_ptr = new_node_ptr;
             self.count += 1;
+        }
+
+        pub fn head(self: Self) ?T {
+            if (self.start_ptr) |start_ptr| {
+                return start_ptr.item;
+            }
+            return null;
         }
 
         pub fn splitHead(self: *Self) Self {
@@ -55,28 +82,14 @@ pub fn LinkedList(comptime T: type) type {
             return ret;
         }
 
-        pub fn deinit(self: *Self) void {
-            var node_ptr = self.start_ptr;
-            while (node_ptr) |node| {
-                node_ptr = node.next;
-                self.allocator.destroy(node);
-            }
-            self.* = undefined;
-        }
-
-
         const Iterator = struct {
             current: ?*Node,
-
-            pub fn next(it: *Iterator) ?T {
-                var ret: ?T = null;
-
+            pub fn next(it: *Iterator) ?*T {
                 if (it.current) |node| {
-                    ret = node.item;
                     it.current = node.next;
+                    return &node.item;
                 }
-
-                return ret;
+                return null;
             }
         };
 

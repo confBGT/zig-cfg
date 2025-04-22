@@ -1,4 +1,4 @@
 S -> NP | DP
 DP -> "foo"
 NP -> "mariopo" DP
-MARIO -> A B C D E
+MARIO -> A B "mariopo" D E
