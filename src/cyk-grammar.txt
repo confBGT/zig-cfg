@@ -1,0 +1,8 @@
+S -> NP VP
+VP -> VP PP | V NP | "eats"
+PP -> P NP
+NP -> Det N | "she"
+V -> "eats"
+P -> "with"
+N -> "fish" | "fork"
+Det -> "a"

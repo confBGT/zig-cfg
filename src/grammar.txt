@@ -1,4 +1,17 @@
-S -> NP | DP
-DP -> "foo"
-NP -> "mariopo" DP
-MARIO -> A B "mariopo" D E
+Al -> Th F | Th Rn F Ar | "Al"
+B -> B Ca | Ti B | Ti Rn F Ar | "B"
+Ca -> Ca Ca | P B | P Rn F Ar | Si Rn F Y F Ar | Si Rn Mg Ar | Si Th | "Ca"
+F -> Ca F | P Mg | Si Al | "F"
+H -> C Rn Al Ar | C Rn F Y F Y F Ar | C Rn F Y Mg Ar | C Rn Mg Y F Ar | H Ca | N Rn F Y F Ar | N Rn Mg Ar | N Th | O B | O Rn F Ar | "H"
+Mg -> B F | Ti Mg | "Mg"
+N -> C Rn F Ar | H Si | "N"
+O -> C Rn F Y F Ar | C Rn Mg Ar | H P | N Rn F Ar | O Ti | "O"
+P -> Ca P | P Ti | Si Rn F Ar | "P"
+Si -> Ca Si | "Si"
+Th -> Th Ca | "Th"
+Ti -> B P | Ti Ti | "Ti"
+e -> H F | N Al | O Mg
+Rn -> "Rn"
+Y -> "Y"
+Ar -> "Ar"
+C -> "C"

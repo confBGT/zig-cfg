@@ -124,6 +124,49 @@ pub const Grammar = struct {
         }
     }
 
+    const FilterRhsIterator = struct {
+        g: *const Grammar,
+        rhs: []const u32,
+        index: usize,
+        pub fn next(self: *FilterRhsIterator) ?u32 {
+            next: while (self.index < self.g.productions.items.len) {
+                const prod = self.g.productions.items[self.index];
+                self.index += 1;
+                if (prod.rhs.count == self.rhs.len) {
+                    var k: usize = 0;
+                    var it = prod.rhs.iterator();
+                    while (it.next()) |id| {
+                        if (id.* != self.rhs[k]) {
+                            continue :next;
+                        }
+                        k += 1;
+                    }
+                    return prod.lhs;
+                }
+            }
+            return null;
+        }
+    };
+
+    pub fn filterRhsIterator(self: *const Self, rhs: []const u32) FilterRhsIterator {
+        return .{
+            .g = self,
+            .rhs = rhs,
+            .index = 0,
+        };
+    }
+
+    pub fn findTerminalId(self: Self, label: []const u8) ?u32 {
+        for (self.symbols, 0..) |symbol, id| {
+            if (symbol.tag == .terminal) {
+                if (std.mem.eql(u8, symbol.label[1..symbol.label.len - 1], label)) {
+                    return @intCast(id);
+                }
+            }
+        }
+        return null;
+    }
+
     fn eliminateNonsolitaryTerminalsFromProduction(
         self: *Self,
         prod: *Production,
@@ -167,7 +210,7 @@ pub const Grammar = struct {
     /// Searches for a production where `id` is the only symbol on the
     /// right-hand side. If found, the corresponding left-hand side symbol ID
     /// is returned. Otherwise, `null` is returned.
-    fn findUniqueLhs(self: *Self, id: u32) ?u32 {
+    pub fn findUniqueLhs(self: *Self, id: u32) ?u32 {
         for (self.productions.items) |prod| {
             if (prod.rhs.count == 1 and prod.rhs.start_ptr.?.item == id) {
                 return prod.lhs;
