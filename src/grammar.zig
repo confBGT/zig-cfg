@@ -11,11 +11,12 @@ pub const Production = struct {
     rhs: LinkedList(u32),
 };
 
-pub const Grammar = struct {
+pub const CFG = struct {
     allocator: std.mem.Allocator,
     productions: std.ArrayList(Production),
     symbols: []Symbol,
     iota: usize,
+    rhs_index: std.AutoArrayHashMap(u32, std.ArrayList(Production)),
 
     const Self = @This();
 
@@ -35,6 +36,7 @@ pub const Grammar = struct {
             .productions = productions,
             .symbols = symbols,
             .iota = symbols.len,
+            .rhs_index = undefined,
         };
     }
 
@@ -125,7 +127,7 @@ pub const Grammar = struct {
     }
 
     const FilterRhsIterator = struct {
-        g: *const Grammar,
+        g: *const CFG,
         rhs: []const u32,
         index: usize,
         pub fn next(self: *FilterRhsIterator) ?u32 {
@@ -225,6 +227,20 @@ pub const Grammar = struct {
             return self.symbols[id].tag == .terminal;
         }
         return false;
+    }
+
+
+    pub fn calculateIndexes(self: *Self) !void {
+        self.rhs_index = std.AutoArrayHashMap(u32, std.ArrayList(Production)).init(self.allocator);
+        for (self.productions.items) |prod| {
+            if (prod.rhs.head()) |head| {
+                const result = try self.rhs_index.getOrPut(head);
+                if (!result.found_existing) {
+                    result.value_ptr.* = std.ArrayList(Production).init(self.allocator);
+                }
+                try result.value_ptr.append(prod);
+            }
+        }
     }
 
     pub fn format(

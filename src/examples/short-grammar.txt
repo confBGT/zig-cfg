@@ -1,0 +1,6 @@
+NP -> Det Nom
+Det -> "a"
+Nom -> AP Nom | "book"
+AP -> Adv A | "orange"
+Adv -> "very"
+A -> "heavy"

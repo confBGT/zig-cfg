@@ -1,3 +1,4 @@
+e -> H F | N Al | O Mg
 Al -> Th F | Th Rn F Ar | "Al"
 B -> B Ca | Ti B | Ti Rn F Ar | "B"
 Ca -> Ca Ca | P B | P Rn F Ar | Si Rn F Y F Ar | Si Rn Mg Ar | Si Th | "Ca"
@@ -10,7 +11,6 @@ P -> Ca P | P Ti | Si Rn F Ar | "P"
 Si -> Ca Si | "Si"
 Th -> Th Ca | "Th"
 Ti -> B P | Ti Ti | "Ti"
-e -> H F | N Al | O Mg
 Rn -> "Rn"
 Y -> "Y"
 Ar -> "Ar"
