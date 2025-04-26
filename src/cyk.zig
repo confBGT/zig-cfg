@@ -2,66 +2,61 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const CFG = @import("grammar.zig").CFG;
 
-const Index = struct {
-    start: usize,
-    end: usize,
-};
-
-const ParseTable = std.AutoHashMap(Index, std.AutoArrayHashMap(u32, usize));
-
-pub fn parse(allocator: Allocator, cnf: *const CFG, sentence: []const []const u8) !?usize {
-    var table = ParseTable.init(allocator);
+pub fn shortest_derivation(allocator: Allocator, cnf: *const CFG, sentence: []const []const u8) !?u32 {
+    const table = try allocator.alloc(std.AutoHashMap(u32, u32), sentence.len * sentence.len);
     defer {
-        var values = table.valueIterator();
-        while (values.next()) |value| value.deinit();
-        table.deinit();
+        for (0..sentence.len) |i| {
+            for (0..i + 1) |j| {
+                table[j + i * sentence.len].deinit();
+            }
+        }
+        allocator.free(table);
+    }
+
+    for (0..sentence.len) |i| {
+        for (0..i + 1) |j| {
+            table[j + i * sentence.len] = std.AutoHashMap(u32, u32).init(allocator);
+        }
     }
 
     for (sentence, 0..) |word, start| {
         if (cnf.findTerminalId(word)) |terminal_id| {
-            var nodes = std.AutoArrayHashMap(u32, usize).init(allocator);
+            var nodes = std.AutoHashMap(u32, u32).init(allocator);
 
-            var filter = cnf.filterRhsIterator(&[_]u32{terminal_id});
-            while (filter.next()) |lhs_id| {
-                try nodes.put(lhs_id, 0);
+            const possible = cnf.rhs_index.get(terminal_id).?;
+            for (possible.items) |prod| {
+                if (prod.rhs.count == 1) {
+                    try nodes.put(prod.lhs, 0);
+                }
             }
 
-            try table.put(.{ .start = start, .end = start + 1 }, nodes);
+            table[start + start * sentence.len] = nodes;
         } else {
-            std.log.err("CYK: Terminal symbol not found in grammar: {string}", .{word});
-            return error.UnknownTerminal;
+            return error.UnknownToken;
         }
     }
 
     for (2..sentence.len + 1) |span| {
         for (0..sentence.len - span + 1) |start| {
             for (1..span) |partition| {
-                const current_index = Index{ .start = start, .end = start + span };
-                const a_index = Index{ .start = start, .end = start + partition };
-                const b_index = Index{ .start = start + partition, .end = start + span };
+                const current = start + (start + span - 1) * sentence.len;
+                const a_index = start + (start + partition - 1) * sentence.len;
+                const b_index = start + partition + (start + span - 1) * sentence.len;
 
-                const table_result = try table.getOrPut(current_index);
-                if (!table_result.found_existing) {
-                    table_result.value_ptr.* = std.AutoArrayHashMap(u32, usize).init(allocator);
-                }
+                const a_result = table[a_index];
+                const b_result = table[b_index];
 
-                const a_result = table.get(a_index) orelse continue;
-                const b_result = table.get(b_index) orelse continue;
+                var a_it = a_result.iterator();
+                while (a_it.next()) |a| {
+                    var b_it = b_result.iterator();
+                    while (b_it.next()) |b| {
+                        const possible = cnf.rhs_index.get(a.key_ptr.*) orelse continue;
+                        const prev = a.value_ptr.* + b.value_ptr.*;
 
-                for (a_result.keys(), a_result.values()) |a_id, a_count| {
-                    for (b_result.keys(), b_result.values()) |b_id, b_count| {
-                        var filter = cnf.filterRhsIterator(&[_]u32{ a_id, b_id });
-                        while (filter.next()) |lhs_id| {
-                            var count = a_count + b_count;
-                            if (lhs_id < cnf.symbols.len) {
-                                count += 1;
-                            }
-
-                            const best_so_far = table_result.value_ptr.get(lhs_id)
-                                orelse std.math.maxInt(usize);
-
-                            if (count < best_so_far) {
-                                try table_result.value_ptr.put(lhs_id, count);
+                        for (possible.items) |prod| {
+                            if (prod.rhs.last_ptr.?.item == b.key_ptr.*) {
+                                const count = if (prod.lhs < cnf.symbols.len) prev + 1 else prev;
+                                try table[current].put(prod.lhs, count);
                             }
                         }
                     }
@@ -70,9 +65,6 @@ pub fn parse(allocator: Allocator, cnf: *const CFG, sentence: []const []const u8
         }
     }
 
-    const result_index = Index{ .start = 0, .end = sentence.len };
-    const result = table.get(result_index).?;
-
-    // return result.get(cnf.start);
+    var result = table[(sentence.len - 1) * sentence.len];
     return result.get(0);
 }

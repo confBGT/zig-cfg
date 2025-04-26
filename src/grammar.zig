@@ -45,7 +45,12 @@ pub const CFG = struct {
             production.rhs.deinit();
         }
 
+        for (self.rhs_index.values()) |*v| {
+            v.deinit();
+        }
+
         self.allocator.free(self.symbols);
+        self.rhs_index.deinit();
         self.productions.deinit();
 
         self.* = undefined;
