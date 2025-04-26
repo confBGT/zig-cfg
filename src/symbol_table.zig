@@ -5,7 +5,7 @@ pub const Symbol = struct {
     tag: Tag,
     label: []const u8,
 
-    const Tag = enum {
+    pub const Tag = enum {
         terminal,
         non_terminal,
     };
@@ -15,11 +15,14 @@ const SymbolContext = struct {
     const Self = @This();
 
     pub fn hash(_: Self, key: Symbol) u32 {
-        return std.array_hash_map.hashString(key.label);
+        var hasher = std.hash.XxHash32.init(0);
+        hasher.update(key.label);
+        hasher.update(std.mem.asBytes(&key.tag));
+        return hasher.final();
     }
 
     pub fn eql(_: Self, a: Symbol, b: Symbol, _: usize) bool {
-        return std.array_hash_map.eqlString(a.label, b.label);
+        return std.array_hash_map.eqlString(a.label, b.label) and a.tag == b.tag;
     }
 };
 

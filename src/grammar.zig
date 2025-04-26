@@ -56,6 +56,46 @@ pub const CFG = struct {
         self.* = undefined;
     }
 
+    /// Searches for a symbol that matches the given label and tag and returns its `id`.
+    /// If no symbol is found, `null` is returned.
+    pub fn findSymbolId(self: Self, label: []const u8, tag: Symbol.Tag) ?u32 {
+        for (self.symbols, 0..) |symbol, id| {
+            if (symbol.tag == tag) {
+                if (std.mem.eql(u8, symbol.label, label)) {
+                    return @intCast(id);
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Returns true if the corresponding symbol was generated during the
+    /// binarization phase.
+    pub fn isIntermediate(self: Self, id: u32) bool {
+        return id < self.symbols.len;
+    }
+
+    /// Searches for a production where `id` is the only symbol on the
+    /// right-hand side. If found, the corresponding left-hand side symbol `id`
+    /// is returned. Otherwise, `null` is returned.
+    pub fn findUniqueRhs(self: Self, id: u32) ?u32 {
+        const possible = self.rhs_index.get(id) orelse return null;
+        for (possible.items) |prod| {
+            if (prod.rhs.count == 1) {
+                return prod.lhs;
+            }
+        }
+        return null;
+    }
+
+    /// Returns whether `id` corresponds to a terminal symbol.
+    pub fn isTerminal(self: Self, id: u32) bool {
+        if (id < self.symbols.len) {
+            return self.symbols[id].tag == .terminal;
+        }
+        return false;
+    }
+
     /// _https://en.wikipedia.org/wiki/Chomsky_normal_form_
     pub fn convertToChomskyNormalForm(self: *Self) !void {
         try self.eliminateNonsolitaryTerminals();
@@ -131,48 +171,19 @@ pub const CFG = struct {
         }
     }
 
-    const FilterRhsIterator = struct {
-        g: *const CFG,
-        rhs: []const u32,
-        index: usize,
-        pub fn next(self: *FilterRhsIterator) ?u32 {
-            next: while (self.index < self.g.productions.items.len) {
-                const prod = self.g.productions.items[self.index];
-                self.index += 1;
-                if (prod.rhs.count == self.rhs.len) {
-                    var k: usize = 0;
-                    var it = prod.rhs.iterator();
-                    while (it.next()) |id| {
-                        if (id.* != self.rhs[k]) {
-                            continue :next;
-                        }
-                        k += 1;
-                    }
-                    return prod.lhs;
+    pub fn calculateIndexes(self: *Self) !void {
+        self.rhs_index = std.AutoArrayHashMap(u32, std.ArrayList(Production)).init(self.allocator);
+        for (self.productions.items) |prod| {
+            if (prod.rhs.head()) |head| {
+                const result = try self.rhs_index.getOrPut(head);
+                if (!result.found_existing) {
+                    result.value_ptr.* = std.ArrayList(Production).init(self.allocator);
                 }
-            }
-            return null;
-        }
-    };
-
-    pub fn filterRhsIterator(self: *const Self, rhs: []const u32) FilterRhsIterator {
-        return .{
-            .g = self,
-            .rhs = rhs,
-            .index = 0,
-        };
-    }
-
-    pub fn findTerminalId(self: Self, label: []const u8) ?u32 {
-        for (self.symbols, 0..) |symbol, id| {
-            if (symbol.tag == .terminal) {
-                if (std.mem.eql(u8, symbol.label[1..symbol.label.len - 1], label)) {
-                    return @intCast(id);
-                }
+                try result.value_ptr.append(prod);
             }
         }
-        return null;
     }
+
 
     fn eliminateNonsolitaryTerminalsFromProduction(
         self: *Self,
@@ -184,7 +195,7 @@ pub const CFG = struct {
         while (it.next()) |id| {
             if (!self.isTerminal(id.*)) continue;
 
-            if (self.findUniqueLhs(id.*)) |lhs| {
+            if (self.findUniqueRhs(id.*)) |lhs| {
                 id.* = lhs;
             } else {
                 var new_prod = Production {
@@ -211,40 +222,6 @@ pub const CFG = struct {
             try prod.rhs.append(new_prod.lhs);
             try self.binariseProduction(&new_prod);
             try self.productions.append(new_prod);
-        }
-    }
-
-    /// Searches for a production where `id` is the only symbol on the
-    /// right-hand side. If found, the corresponding left-hand side symbol ID
-    /// is returned. Otherwise, `null` is returned.
-    pub fn findUniqueLhs(self: *Self, id: u32) ?u32 {
-        for (self.productions.items) |prod| {
-            if (prod.rhs.count == 1 and prod.rhs.start_ptr.?.item == id) {
-                return prod.lhs;
-            }
-        }
-        return null;
-    }
-
-    /// Returns whether `id` corresponds to a terminal symbol.
-    fn isTerminal(self: Self, id: u32) bool {
-        if (id < self.symbols.len) {
-            return self.symbols[id].tag == .terminal;
-        }
-        return false;
-    }
-
-
-    pub fn calculateIndexes(self: *Self) !void {
-        self.rhs_index = std.AutoArrayHashMap(u32, std.ArrayList(Production)).init(self.allocator);
-        for (self.productions.items) |prod| {
-            if (prod.rhs.head()) |head| {
-                const result = try self.rhs_index.getOrPut(head);
-                if (!result.found_existing) {
-                    result.value_ptr.* = std.ArrayList(Production).init(self.allocator);
-                }
-                try result.value_ptr.append(prod);
-            }
         }
     }
 

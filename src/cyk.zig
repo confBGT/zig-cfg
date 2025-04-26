@@ -20,10 +20,11 @@ pub fn shortest_derivation(allocator: Allocator, cnf: *const CFG, sentence: []co
     }
 
     for (sentence, 0..) |word, start| {
-        if (cnf.findTerminalId(word)) |terminal_id| {
+        if (cnf.findSymbolId(word, .terminal)) |terminal_id| {
             var nodes = std.AutoHashMap(u32, u32).init(allocator);
 
             const possible = cnf.rhs_index.get(terminal_id).?;
+
             for (possible.items) |prod| {
                 if (prod.rhs.count == 1) {
                     try nodes.put(prod.lhs, 0);

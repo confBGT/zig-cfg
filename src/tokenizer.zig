@@ -26,8 +26,9 @@ pub const Tokenizer = struct {
         start,
         arrow,
         newline,
-        terminal,
         non_terminal,
+        terminal_single_quote,
+        terminal_double_quote,
     };
 
     pub fn init(buffer: [:0]const u8) Self {
@@ -48,7 +49,7 @@ pub const Tokenizer = struct {
         }
 
         const tag_name = @tagName(token.tag);
-        std.debug.print("Token {{ {string}: {string} }}\n", .{tag_name, token_view});
+        std.debug.print("Token {{ {string}: {string} }}\n", .{ tag_name, token_view });
     }
 
     pub fn view(self: Self, token: Token) []const u8 {
@@ -60,14 +61,14 @@ pub const Tokenizer = struct {
             return null;
         }
 
-        var token = Token {
+        var token = Token{
             .tag = undefined,
             .start = self.index,
             .end = undefined,
         };
 
         state: switch (State.start) {
-            .start => switch(self.buffer[self.index]) {
+            .start => switch (self.buffer[self.index]) {
                 0 => {
                     self.index += 1;
                     token.tag = .eof;
@@ -94,59 +95,86 @@ pub const Tokenizer = struct {
                     self.index += 1;
                     token.tag = .delimiter;
                 },
-                // start of terminal
-                '\'', '\"' => {
+                // start of terminal (single quotes)
+                '\'' => {
                     self.index += 1;
                     token.tag = .terminal;
-                    continue :state .terminal;
+                    token.start = self.index;
+                    continue :state .terminal_single_quote;
+                },
+                // start of terminal (double quotes)
+                '\"' => {
+                    self.index += 1;
+                    token.tag = .terminal;
+                    token.start = self.index;
+                    continue :state .terminal_double_quote;
                 },
                 // start of non terminal
-                '0' ... '9', 'a' ... 'z', 'A' ... 'Z' => {
+                '0'...'9', 'a'...'z', 'A'...'Z' => {
                     self.index += 1;
                     token.tag = .non_terminal;
                     continue :state .non_terminal;
                 },
                 // invalid character
                 else => |c| {
-                    std.log.err("Invalid character (State: start) '{c}' ({d})", .{c, c});
+                    std.log.err("Invalid character (State: start) '{c}' ({d})", .{ c, c });
                     return error.InvalidCharacter;
                 },
             },
 
-            .arrow => switch(self.buffer[self.index]) {
+            .arrow => switch (self.buffer[self.index]) {
                 '>' => {
                     self.index += 1;
                 },
                 else => |c| {
-                    std.log.err("Invalid character '{c}' ({d})", .{c, c});
+                    std.log.err("Invalid character '{c}' ({d})", .{ c, c });
                     return error.InvalidCharacter;
-                }
+                },
             },
 
-            .newline => switch(self.buffer[self.index]) {
+            .newline => switch (self.buffer[self.index]) {
                 '\n', '\r' => {
                     self.index += 1;
                 },
-                else => {}
+                else => {},
             },
 
-            .terminal => switch(self.buffer[self.index]) {
-                '\'', '\"' => {
+            .terminal_single_quote => switch (self.buffer[self.index]) {
+                '\'' => {
+                    token.end = self.index;
                     self.index += 1;
+                    return token;
                 },
                 else => |c| {
                     if (std.ascii.isPrint(c)) {
                         self.index += 1;
-                        continue :state .terminal;
+                        continue :state .terminal_single_quote;
                     } else {
-                        std.log.err("Invalid character '{c}' ({d})", .{c, c});
+                        std.log.err("Invalid character '{c}' ({d})", .{ c, c });
                         return error.InvalidCharacter;
                     }
-                }
+                },
             },
 
-            .non_terminal => switch(self.buffer[self.index]) {
-                '0' ... '9', 'a' ... 'z', 'A' ... 'Z' => {
+            .terminal_double_quote => switch (self.buffer[self.index]) {
+                '\"' => {
+                    token.end = self.index;
+                    self.index += 1;
+                    return token;
+                },
+                else => |c| {
+                    if (std.ascii.isPrint(c)) {
+                        self.index += 1;
+                        continue :state .terminal_double_quote;
+                    } else {
+                        std.log.err("Invalid character '{c}' ({d})", .{ c, c });
+                        return error.InvalidCharacter;
+                    }
+                },
+            },
+
+            .non_terminal => switch (self.buffer[self.index]) {
+                '0'...'9', 'a'...'z', 'A'...'Z' => {
                     self.index += 1;
                     continue :state .non_terminal;
                 },
